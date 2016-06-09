@@ -124,8 +124,50 @@ static int hf_vy_short       = -1;
 static int hf_vz_short       = -1;
 static int hf_az_short       = -1;
 static int hf_vaz_short      = -1;
+static int hf_shotIndex      = -1;
+static int hf_shotEndReason  = -1;
 
 static gint ett_bzflag = -1;
+
+static gint
+decodeFlagInfo (tvbuff_t *tvb, gint offset, proto_tree *tree)
+{
+  proto_tree_add_item(tree, hf_flagIndex, tvb, offset, 2, ENC_BIG_ENDIAN);
+  offset += 2;
+  proto_tree_add_item(tree, hf_flag_abbrev, tvb, offset, 2, ENC_BIG_ENDIAN);
+  offset += 2;
+  proto_tree_add_item(tree, hf_flag_status, tvb, offset, 2, ENC_BIG_ENDIAN);
+  offset += 2;
+  proto_tree_add_item(tree, hf_flag_endurance, tvb, offset, 2, ENC_BIG_ENDIAN);
+  offset += 2;
+  proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+  offset++;
+  proto_tree_add_item(tree, hf_x, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_y, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_z, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_launch_x, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_launch_y, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_launch_z, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_landing_x, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_landing_y, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_landing_z, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_flightTime, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_flightEnd, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_flagSpeed, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  return offset;
+}
 
 static void
 decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
@@ -142,13 +184,18 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
   offset += 2;
 
   if (code == 0x6163) {
-    col_add_str(pinfo->cinfo, COL_INFO, "Accept ");
+    col_set_str(pinfo->cinfo, COL_INFO, "Accept");
     proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
-    offset += 1;
+    offset++;
   } else if (code == 0x616c) {
-    col_add_str(pinfo->cinfo, COL_INFO, "Alive ");
+    col_set_str(pinfo->cinfo, COL_INFO, "Alive");
+  } else if (code == 0x6466) {
+    col_set_str(pinfo->cinfo, COL_INFO, "DropFlag");
+    proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset++;
+    offset = decodeFlagInfo(tvb, offset, tree);
   } else if (code == 0x656e) {
-    col_add_str(pinfo->cinfo, COL_INFO, "Enter ");
+    col_set_str(pinfo->cinfo, COL_INFO, "Enter");
     proto_tree_add_item(tree, hf_playerType, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
     proto_tree_add_item(tree, hf_teamColor, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -165,7 +212,7 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
   } else if (code == 0x6674) {
     guint slen;
 
-    col_add_str(pinfo->cinfo, COL_INFO, "FlagType ");
+    col_set_str(pinfo->cinfo, COL_INFO, "FlagType");
     proto_tree_add_item(tree, hf_flag_abbrev, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
     proto_tree_add_item(tree, hf_flag_quality, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -181,51 +228,15 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
   } else if (code == 0x6675) {
     guint16 count;
 
-    col_add_str(pinfo->cinfo, COL_INFO, "FlagUpdate ");
+    col_set_str(pinfo->cinfo, COL_INFO, "FlagUpdate");
     count = tvb_get_ntohs(tvb, offset);
     proto_tree_add_item(tree, hf_count, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
     for (; count > 0; count--) {
-      proto_tree_add_item(tree, hf_flagIndex, tvb, offset, 2, ENC_BIG_ENDIAN);
-      offset += 2;
-      proto_tree_add_item(tree, hf_flag_abbrev, tvb, offset, 2,
-	  ENC_BIG_ENDIAN);
-      offset += 2;
-      proto_tree_add_item(tree, hf_flag_status, tvb, offset, 2,
-	  ENC_BIG_ENDIAN);
-      offset += 2;
-      proto_tree_add_item(tree, hf_flag_endurance, tvb, offset, 2,
-	  ENC_BIG_ENDIAN);
-      offset += 2;
-      proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
-      offset++;
-      proto_tree_add_item(tree, hf_x, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
-      proto_tree_add_item(tree, hf_y, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
-      proto_tree_add_item(tree, hf_z, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
-      proto_tree_add_item(tree, hf_launch_x, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
-      proto_tree_add_item(tree, hf_launch_y, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
-      proto_tree_add_item(tree, hf_launch_z, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
-      proto_tree_add_item(tree, hf_landing_x, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
-      proto_tree_add_item(tree, hf_landing_y, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
-      proto_tree_add_item(tree, hf_landing_z, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
-      proto_tree_add_item(tree, hf_flightTime, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
-      proto_tree_add_item(tree, hf_flightEnd, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
-      proto_tree_add_item(tree, hf_flagSpeed, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
+      offset = decodeFlagInfo(tvb, offset, tree);
     }
   } else if (code == 0x6773) {
-    col_add_str(pinfo->cinfo, COL_INFO, "GameSettings ");
+    col_set_str(pinfo->cinfo, COL_INFO, "GameSettings");
     proto_tree_add_item(tree, hf_worldSize, tvb, offset, 4, ENC_BIG_ENDIAN);
     offset += 4;
     proto_tree_add_item(tree, hf_gameType, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -256,13 +267,13 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
     // dummy zero Uint
     offset += 4;
   } else if (code == 0x6774) {
-    col_add_str(pinfo->cinfo, COL_INFO, "GameTime ");
+    col_set_str(pinfo->cinfo, COL_INFO, "GameTime");
     proto_tree_add_item(tree, hf_gameTime, tvb, offset, 8, ENC_BIG_ENDIAN);
     offset += 8;
   } else if (code == 0x6d67) {
     int msgSize = plen;
 
-    col_add_str(pinfo->cinfo, COL_INFO, "Message ");
+    col_set_str(pinfo->cinfo, COL_INFO, "Message");
     proto_tree_add_item(tree, hf_src_player, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     proto_tree_add_item(tree, hf_dst_player, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -276,22 +287,22 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
   } else if (code == 0x6e66) {
     int i;
 
-    col_add_str(pinfo->cinfo, COL_INFO, "NegotiateFlags ");
+    col_set_str(pinfo->cinfo, COL_INFO, "NegotiateFlags");
     for (i = 0; i < plen / 2; i++) {
       proto_tree_add_item(tree, hf_flag_abbrev, tvb, offset, 2,
 	  ENC_BIG_ENDIAN);
       offset += 2;
     }
   } else if (code == 0x6f66) {
-    col_add_str(pinfo->cinfo, COL_INFO, "UDPLinkRequest ");
+    col_set_str(pinfo->cinfo, COL_INFO, "UDPLinkRequest");
     if (plen) {
       proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
       offset += 1;
     }
   } else if (code == 0x6f67) {
-    col_add_str(pinfo->cinfo, COL_INFO, "UDPLinkEstablished ");
+    col_set_str(pinfo->cinfo, COL_INFO, "UDPLinkEstablished");
   } else if (code == 0x7073) {
-    col_add_str(pinfo->cinfo, COL_INFO, "PlayerUpdateSmall ");
+    col_set_str(pinfo->cinfo, COL_INFO, "PlayerUpdateSmall");
     proto_tree_add_item(tree, hf_timeStamp, tvb, offset, 4, ENC_BIG_ENDIAN);
     offset += 4;
     proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -326,12 +337,21 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
     offset += 2;
     proto_tree_add_item(tree, hf_vaz_short, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
+  } else if (code == 0x7365) {
+    col_set_str(pinfo->cinfo, COL_INFO, "ShotEnd");
+    proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset++;
+    proto_tree_add_item(tree, hf_shotIndex, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+    proto_tree_add_item(tree, hf_shotEndReason, tvb, offset, 2,
+	ENC_BIG_ENDIAN);
+    offset += 2;
   } else if (code == 0x7376) {
     int    remaining;
     guint8 stringLength;
 
     remaining = plen;
-    col_add_str(pinfo->cinfo, COL_INFO, "SetVar ");
+    col_set_str(pinfo->cinfo, COL_INFO, "SetVar");
     proto_tree_add_item(tree, hf_count, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset    += 2;
     remaining -= 2;
@@ -349,7 +369,7 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
     guint8 teamNo;
     guint8 i;
 
-    col_add_str(pinfo->cinfo, COL_INFO, "TeamUpdate ");
+    col_set_str(pinfo->cinfo, COL_INFO, "TeamUpdate");
     teamNo = tvb_get_guint8(tvb, offset);
     proto_tree_add_item(tree, hf_teamNumber, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
@@ -364,13 +384,13 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
       offset += 2;
     }
   } else if (code == 0x7768) {
-    col_add_str(pinfo->cinfo, COL_INFO, "WantWHash ");
+    col_set_str(pinfo->cinfo, COL_INFO, "WantWHash");
     if (plen) {
       proto_tree_add_item(tree, hf_hash, tvb, offset, plen, ENC_BIG_ENDIAN);
       offset += plen;
     }
   } else if (code == 0x7773) {
-    col_add_str(pinfo->cinfo, COL_INFO, "WantSettings ");
+    col_set_str(pinfo->cinfo, COL_INFO, "WantSettings");
   } else {
     offset += plen;
   }
@@ -444,7 +464,6 @@ dissect_tcp_bzflag (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     proto_tree_add_item(bzflag_tree, hf_player, tvb, offset, 1, ENC_NA);
     return len;
   }
-  col_clear(pinfo->cinfo, COL_INFO);
   tcp_dissect_pdus(tvb, pinfo, tree, TRUE, 2, get_bzflag_pdu_len,
       dissect_bzflag_tcp_pdu, data);
   return tvb_reported_length(tvb);
@@ -456,7 +475,6 @@ dissect_udp_bzflag (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 {
   gint len;
 
-  col_clear(pinfo->cinfo, COL_INFO);
   len = tvb_reported_length(tvb);
   dissect_bzflag_common(tvb, pinfo, tree);
   return len;
@@ -493,6 +511,19 @@ proto_register_bzflag (void)
     {6,  "RabbitTeam"},
     {7,  "HunterTeam"},
     {0,  NULL}
+  };
+
+  static const value_string shotEndReason[] = {
+    {0x0000, "GotKilledMsg"},
+    {0x0001, "GotShot"},
+    {0x0002, "GotRunOver"},
+    {0x0003, "GotCaptured"},
+    {0x0004, "GenocideEffect"},
+    {0x0005, "SelfDestruct"},
+    {0x0006, "WaterDeath"},
+    {0x0007, "LastReason"},
+    {0x0008, "DeathTouch/PhysicsDriverDeath"},
+    {0,      NULL}
   };
 
   static const value_string messageType[] = {
@@ -545,6 +576,7 @@ proto_register_bzflag (void)
   static const value_string codeName[] = {
     {0x6163, "MsgAccept"},
     {0x616c, "MsgAlive"},
+    {0x6466, "MsgDropFlag"},
     {0x656e, "MsgEnter"},
     {0x6674, "MsgFlagType"},
     {0x6675, "MsgFlagUpdate"},
@@ -555,6 +587,7 @@ proto_register_bzflag (void)
     {0x6f66, "MsgUDPLinkRequest"},
     {0x6f67, "MsgUDPLinkEstablished"},
     {0x7073, "MsgPlayerUpdateSmall"},
+    {0x7365, "MsgShotEnd"},
     {0x7376, "MsgSetVar"},
     {0x7475, "MsgTeamUpdate"},
     {0x7768, "MsgWantWHash"},
@@ -817,6 +850,12 @@ proto_register_bzflag (void)
     {&hf_vaz_short,
       {"VAZ Short", "bzflag.player.vazS", FT_INT16, BASE_DEC, NULL, 0x0, NULL,
 	HFILL}},
+    {&hf_shotIndex,
+      {"Shot Index", "bzflag.shot.index", FT_INT16, BASE_DEC, NULL, 0x0, NULL,
+	HFILL}},
+    {&hf_shotEndReason,
+      {"ShotEnd Reason", "bzflag.shot.reason", FT_INT16, BASE_DEC,
+	shotEndReason, 0x0, NULL, HFILL}},
   };
 
   static gint *ett[] = {
