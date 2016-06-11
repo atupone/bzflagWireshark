@@ -126,6 +126,21 @@ static int hf_az_short       = -1;
 static int hf_vaz_short      = -1;
 static int hf_shotIndex      = -1;
 static int hf_shotEndReason  = -1;
+static int hf_victimPlayer   = -1;
+static int hf_killerPlayer   = -1;
+static int hf_killReason     = -1;
+static int hf_playerCount    = -1;
+static int hf_win            = -1;
+static int hf_loss           = -1;
+static int hf_tks            = -1;
+static int hf_posX           = -1;
+static int hf_posY           = -1;
+static int hf_posZ           = -1;
+static int hf_velX           = -1;
+static int hf_velY           = -1;
+static int hf_velZ           = -1;
+static int hf_DT             = -1;
+static int hf_lifeTime       = -1;
 
 static gint ett_bzflag = -1;
 
@@ -166,6 +181,32 @@ decodeFlagInfo (tvbuff_t *tvb, gint offset, proto_tree *tree)
   offset += 4;
   proto_tree_add_item(tree, hf_flagSpeed, tvb, offset, 4, ENC_BIG_ENDIAN);
   offset += 4;
+  return offset;
+}
+
+static gint
+decodeShotUpdate (tvbuff_t *tvb, gint offset, proto_tree *tree)
+{
+  proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+  offset++;
+  proto_tree_add_item(tree, hf_shotIndex, tvb, offset, 2, ENC_BIG_ENDIAN);
+  offset += 2;
+  proto_tree_add_item(tree, hf_posX, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_posY, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_posZ, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_velX, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_velY, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_velZ, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_DT, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_teamColor, tvb, offset, 2, ENC_BIG_ENDIAN);
+  offset += 2;
   return offset;
 }
 
@@ -235,6 +276,11 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
     for (; count > 0; count--) {
       offset = decodeFlagInfo(tvb, offset, tree);
     }
+  } else if (code == 0x676d) {
+    col_set_str(pinfo->cinfo, COL_INFO, "GMUpdate");
+    offset = decodeShotUpdate(tvb, offset, tree);
+    proto_tree_add_item(tree, hf_dst_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset++;
   } else if (code == 0x6773) {
     col_set_str(pinfo->cinfo, COL_INFO, "GameSettings");
     proto_tree_add_item(tree, hf_worldSize, tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -270,6 +316,18 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
     col_set_str(pinfo->cinfo, COL_INFO, "GameTime");
     proto_tree_add_item(tree, hf_gameTime, tvb, offset, 8, ENC_BIG_ENDIAN);
     offset += 8;
+  } else if (code == 0x6b6c) {
+    col_set_str(pinfo->cinfo, COL_INFO, "Killed");
+    proto_tree_add_item(tree, hf_victimPlayer, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset++;
+    proto_tree_add_item(tree, hf_killerPlayer, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset++;
+    proto_tree_add_item(tree, hf_killReason, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+    proto_tree_add_item(tree, hf_shotIndex, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+    proto_tree_add_item(tree, hf_flag_abbrev, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
   } else if (code == 0x6d67) {
     int msgSize = plen;
 
@@ -337,6 +395,33 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
     offset += 2;
     proto_tree_add_item(tree, hf_vaz_short, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
+  } else if (code == 0x7362) {
+    col_set_str(pinfo->cinfo, COL_INFO, "ShotBegin");
+    proto_tree_add_item(tree, hf_timeStamp, tvb, offset, 4, ENC_BIG_ENDIAN);
+    offset += 4;
+    offset = decodeShotUpdate(tvb, offset, tree);
+    proto_tree_add_item(tree, hf_flag_abbrev, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+    proto_tree_add_item(tree, hf_lifeTime, tvb, offset, 4, ENC_BIG_ENDIAN);
+    offset += 4;
+  } else if (code == 0x7363) {
+    guint8 count;
+
+    col_set_str(pinfo->cinfo, COL_INFO, "Score");
+    count = tvb_get_guint8(tvb, offset);
+    proto_tree_add_item(tree, hf_playerCount, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset++;
+
+    for (; count > 0; count--) {
+      proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+      offset++;
+      proto_tree_add_item(tree, hf_win, tvb, offset, 2, ENC_BIG_ENDIAN);
+      offset += 2;
+      proto_tree_add_item(tree, hf_loss, tvb, offset, 2, ENC_BIG_ENDIAN);
+      offset += 2;
+      proto_tree_add_item(tree, hf_tks, tvb, offset, 2, ENC_BIG_ENDIAN);
+      offset += 2;
+    }
   } else if (code == 0x7365) {
     col_set_str(pinfo->cinfo, COL_INFO, "ShotEnd");
     proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -580,13 +665,17 @@ proto_register_bzflag (void)
     {0x656e, "MsgEnter"},
     {0x6674, "MsgFlagType"},
     {0x6675, "MsgFlagUpdate"},
+    {0x676d, "MsgGMUpdate"},
     {0x6773, "MsgGameSettings"},
     {0x6774, "MsgGameTime"},
+    {0x6b6c, "MsgKilled"},
     {0x6d67, "MsgMessage"},
     {0x6e66, "MsgNegotiateFlags"},
     {0x6f66, "MsgUDPLinkRequest"},
     {0x6f67, "MsgUDPLinkEstablished"},
     {0x7073, "MsgPlayerUpdateSmall"},
+    {0x7362, "MsgShotBegin"},
+    {0x7363, "MsgScore"},
     {0x7365, "MsgShotEnd"},
     {0x7376, "MsgSetVar"},
     {0x7475, "MsgTeamUpdate"},
@@ -702,8 +791,8 @@ proto_register_bzflag (void)
       {"PlayerType", "bzflag.player.type", FT_UINT16, BASE_DEC, playerType,
 	0x0, NULL, HFILL}},
     {&hf_teamColor,
-      {"TeamColor", "bzflag.player.color", FT_INT16, BASE_DEC, teamColor,
-	0x0, NULL, HFILL}},
+      {"TeamColor", "bzflag.teamColor", FT_INT16, BASE_DEC, teamColor, 0x0,
+	NULL, HFILL}},
     {&hf_callSign,
       {"CallSign", "bzflag.player.callsign", FT_STRING, STR_ASCII, NULL, 0x0,
 	NULL, HFILL}},
@@ -856,6 +945,51 @@ proto_register_bzflag (void)
     {&hf_shotEndReason,
       {"ShotEnd Reason", "bzflag.shot.reason", FT_INT16, BASE_DEC,
 	shotEndReason, 0x0, NULL, HFILL}},
+    {&hf_victimPlayer,
+      {"Victim", "bzflag.kill.victim", FT_INT8,
+	BASE_DEC | BASE_RANGE_STRING, RVALS(player), 0x0, NULL, HFILL}},
+    {&hf_killerPlayer,
+      {"Killer", "bzflag.kill.killer", FT_INT8,
+	BASE_DEC | BASE_RANGE_STRING, RVALS(player), 0x0, NULL, HFILL}},
+    {&hf_killReason,
+      {"Kill Reason", "bzflag.kill.reason", FT_INT16, BASE_DEC, shotEndReason,
+	0x0, NULL, HFILL}},
+    {&hf_playerCount,
+      {"Count", "bzflag.players.count", FT_INT8, BASE_DEC, NULL, 0x0,
+	NULL, HFILL}},
+    {&hf_win,
+      {"Win", "bzflag.player.win", FT_INT16, BASE_DEC, NULL, 0x0,
+	NULL, HFILL}},
+    {&hf_loss,
+      {"Loss", "bzflag.player.loss", FT_INT16, BASE_DEC, NULL, 0x0,
+	NULL, HFILL}},
+    {&hf_tks,
+      {"Team Kills", "bzflag.player.tks", FT_INT16, BASE_DEC, NULL, 0x0,
+	NULL, HFILL}},
+    {&hf_posX,
+      {"Position X", "bzflag.pos.x", FT_FLOAT, BASE_NONE, NULL, 0x0, NULL,
+	HFILL}},
+    {&hf_posY,
+      {"Position Y", "bzflag.pos.y", FT_FLOAT, BASE_NONE, NULL, 0x0, NULL,
+	HFILL}},
+    {&hf_posZ,
+      {"Position Z", "bzflag.pos.z", FT_FLOAT, BASE_NONE, NULL, 0x0, NULL,
+	HFILL}},
+    {&hf_velX,
+      {"Velocity X", "bzflag.vel.x", FT_FLOAT, BASE_NONE, NULL, 0x0, NULL,
+	HFILL}},
+    {&hf_velY,
+      {"Velocity Y", "bzflag.vel.y", FT_FLOAT, BASE_NONE, NULL, 0x0, NULL,
+	HFILL}},
+    {&hf_velZ,
+      {"Velocity Z", "bzflag.vel.z", FT_FLOAT, BASE_NONE, NULL, 0x0, NULL,
+	HFILL}},
+    {&hf_DT,
+      {"Delta Time", "bzflag.deltaTime", FT_FLOAT, BASE_NONE, NULL, 0x0, NULL,
+	HFILL}},
+    {&hf_lifeTime,
+      {"Life Time", "bzflag.lifeTime", FT_FLOAT, BASE_NONE, NULL, 0x0, NULL,
+	HFILL}},
   };
 
   static gint *ett[] = {
