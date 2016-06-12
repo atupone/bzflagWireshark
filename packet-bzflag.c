@@ -141,8 +141,24 @@ static int hf_velY           = -1;
 static int hf_velZ           = -1;
 static int hf_DT             = -1;
 static int hf_lifeTime       = -1;
+static int hf_pingSeqNo      = -1;
+static int hf_isRegistered   = -1;
+static int hf_isVerified     = -1;
+static int hf_isAdmin        = -1;
 
 static gint ett_bzflag = -1;
+
+static gint
+decodePosition (tvbuff_t *tvb, gint offset, proto_tree *tree)
+{
+  proto_tree_add_item(tree, hf_x, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_y, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  proto_tree_add_item(tree, hf_z, tvb, offset, 4, ENC_BIG_ENDIAN);
+  offset += 4;
+  return offset;
+}
 
 static gint
 decodeFlagInfo (tvbuff_t *tvb, gint offset, proto_tree *tree)
@@ -157,12 +173,7 @@ decodeFlagInfo (tvbuff_t *tvb, gint offset, proto_tree *tree)
   offset += 2;
   proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
   offset++;
-  proto_tree_add_item(tree, hf_x, tvb, offset, 4, ENC_BIG_ENDIAN);
-  offset += 4;
-  proto_tree_add_item(tree, hf_y, tvb, offset, 4, ENC_BIG_ENDIAN);
-  offset += 4;
-  proto_tree_add_item(tree, hf_z, tvb, offset, 4, ENC_BIG_ENDIAN);
-  offset += 4;
+  offset = decodePosition(tvb, offset, tree);
   proto_tree_add_item(tree, hf_launch_x, tvb, offset, 4, ENC_BIG_ENDIAN);
   offset += 4;
   proto_tree_add_item(tree, hf_launch_y, tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -230,11 +241,41 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
     offset++;
   } else if (code == 0x616c) {
     col_set_str(pinfo->cinfo, COL_INFO, "Alive");
-  } else if (code == 0x6466) {
-    col_set_str(pinfo->cinfo, COL_INFO, "DropFlag");
+  } else if (code == 0x6170) {
+    col_set_str(pinfo->cinfo, COL_INFO, "AddPlayer");
     proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
-    offset = decodeFlagInfo(tvb, offset, tree);
+    proto_tree_add_item(tree, hf_playerType, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+    proto_tree_add_item(tree, hf_teamColor, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+    proto_tree_add_item(tree, hf_win, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+    proto_tree_add_item(tree, hf_loss, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+    proto_tree_add_item(tree, hf_tks, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+    proto_tree_add_item(tree, hf_callSign, tvb, offset, 32, ENC_BIG_ENDIAN);
+    offset += 32;
+    proto_tree_add_item(tree, hf_motto, tvb, offset, 128, ENC_BIG_ENDIAN);
+    offset += 128;
+  } else if (code == 0x6366) {
+    col_set_str(pinfo->cinfo, COL_INFO, "CaptureFlag");
+    proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset++;
+    proto_tree_add_item(tree, hf_flagIndex, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+    proto_tree_add_item(tree, hf_teamColor, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+  } else if (code == 0x6466) {
+    col_set_str(pinfo->cinfo, COL_INFO, "DropFlag");
+    if (plen == 12) {
+      offset = decodePosition(tvb, offset, tree);
+    } else {
+      proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+      offset++;
+      offset = decodeFlagInfo(tvb, offset, tree);
+    }
   } else if (code == 0x656e) {
     col_set_str(pinfo->cinfo, COL_INFO, "Enter");
     proto_tree_add_item(tree, hf_playerType, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -274,6 +315,16 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
     proto_tree_add_item(tree, hf_count, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
     for (; count > 0; count--) {
+      offset = decodeFlagInfo(tvb, offset, tree);
+    }
+  } else if (code == 0x6766) {
+    col_set_str(pinfo->cinfo, COL_INFO, "GrabFlag");
+    if (plen == 2) {
+      proto_tree_add_item(tree, hf_flagIndex, tvb, offset, 2, ENC_BIG_ENDIAN);
+      offset += 2;
+    } else {
+      proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+      offset++;
       offset = decodeFlagInfo(tvb, offset, tree);
     }
   } else if (code == 0x676d) {
@@ -318,8 +369,11 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
     offset += 8;
   } else if (code == 0x6b6c) {
     col_set_str(pinfo->cinfo, COL_INFO, "Killed");
-    proto_tree_add_item(tree, hf_victimPlayer, tvb, offset, 1, ENC_BIG_ENDIAN);
-    offset++;
+    if (plen == 8) {
+      proto_tree_add_item(tree, hf_victimPlayer, tvb, offset, 1,
+	  ENC_BIG_ENDIAN);
+      offset++;
+    }
     proto_tree_add_item(tree, hf_killerPlayer, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     proto_tree_add_item(tree, hf_killReason, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -359,6 +413,26 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
     }
   } else if (code == 0x6f67) {
     col_set_str(pinfo->cinfo, COL_INFO, "UDPLinkEstablished");
+  } else if (code == 0x7062) {
+    guint8 count;
+
+    col_set_str(pinfo->cinfo, COL_INFO, "PlayerInfo");
+    count = tvb_get_guint8(tvb, offset);
+    proto_tree_add_item(tree, hf_playerCount, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset++;
+    for (; count > 0; count--) {
+      proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+      offset++;
+      proto_tree_add_item(tree, hf_isRegistered, tvb, offset, 1,
+	  ENC_BIG_ENDIAN);
+      proto_tree_add_item(tree, hf_isVerified, tvb, offset, 1, ENC_BIG_ENDIAN);
+      proto_tree_add_item(tree, hf_isAdmin, tvb, offset, 1, ENC_BIG_ENDIAN);
+      offset++;
+    }
+  } else if (code == 0x7069) {
+    col_set_str(pinfo->cinfo, COL_INFO, "LagPing");
+    proto_tree_add_item(tree, hf_pingSeqNo, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
   } else if (code == 0x7073) {
     col_set_str(pinfo->cinfo, COL_INFO, "PlayerUpdateSmall");
     proto_tree_add_item(tree, hf_timeStamp, tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -530,24 +604,35 @@ dissect_tcp_bzflag (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
   len = tvb_reported_length(tvb);
   if (len == 10) {
-    col_set_str(pinfo->cinfo, COL_PROTOCOL, "BZflag");
-    ti = proto_tree_add_item(tree, proto_bzflag, tvb, 0, -1, ENC_NA);
-    bzflag_tree = proto_item_add_subtree(ti, ett_bzflag);
-    col_set_str(pinfo->cinfo, COL_INFO, "BZFLAG Magic");
-    proto_tree_add_item(bzflag_tree, hf_bzflag_string, tvb, offset, 10, ENC_NA);
-    return len;
-  }
-  if (len == 9) {
-    col_set_str(pinfo->cinfo, COL_PROTOCOL, "BZflag");
-    ti = proto_tree_add_item(tree, proto_bzflag, tvb, 0, -1, ENC_NA);
-    bzflag_tree = proto_item_add_subtree(ti, ett_bzflag);
-    col_set_str(pinfo->cinfo, COL_INFO, "BZFS Version");
-    proto_tree_add_item(bzflag_tree, hf_bzfs_string,  tvb, offset, 4, ENC_NA);
-    offset += 4;
-    proto_tree_add_item(bzflag_tree, hf_bzfs_version, tvb, offset, 4, ENC_NA);
-    offset += 4;
-    proto_tree_add_item(bzflag_tree, hf_player, tvb, offset, 1, ENC_NA);
-    return len;
+    char str[6];
+    const char BZFlag_String[] ="BZFLAG";
+
+    tvb_memcpy(tvb, str, offset, 6);
+    if (!memcmp(str, BZFlag_String, 6)) {
+      col_set_str(pinfo->cinfo, COL_PROTOCOL, "BZflag");
+      ti = proto_tree_add_item(tree, proto_bzflag, tvb, 0, -1, ENC_NA);
+      bzflag_tree = proto_item_add_subtree(ti, ett_bzflag);
+      col_set_str(pinfo->cinfo, COL_INFO, "BZFLAG Magic");
+      proto_tree_add_item(bzflag_tree, hf_bzflag_string, tvb, offset, 10, ENC_NA);
+      return len;
+    }
+  } else if (len == 9) {
+    char str[4];
+    const char BZFS_String[] ="BZFS";
+
+    tvb_memcpy(tvb, str, offset, 4);
+    if (!memcmp(str, BZFS_String, 4)) {
+      col_set_str(pinfo->cinfo, COL_PROTOCOL, "BZflag");
+      ti = proto_tree_add_item(tree, proto_bzflag, tvb, 0, -1, ENC_NA);
+      bzflag_tree = proto_item_add_subtree(ti, ett_bzflag);
+      col_set_str(pinfo->cinfo, COL_INFO, "BZFS Version");
+      proto_tree_add_item(bzflag_tree, hf_bzfs_string,  tvb, offset, 4, ENC_NA);
+      offset += 4;
+      proto_tree_add_item(bzflag_tree, hf_bzfs_version, tvb, offset, 4, ENC_NA);
+      offset += 4;
+      proto_tree_add_item(bzflag_tree, hf_player, tvb, offset, 1, ENC_NA);
+      return len;
+    }
   }
   tcp_dissect_pdus(tvb, pinfo, tree, TRUE, 2, get_bzflag_pdu_len,
       dissect_bzflag_tcp_pdu, data);
@@ -661,10 +746,13 @@ proto_register_bzflag (void)
   static const value_string codeName[] = {
     {0x6163, "MsgAccept"},
     {0x616c, "MsgAlive"},
+    {0x6170, "MsgAddPlayer"},
+    {0x6366, "MsgCaptureFlag"}, // 1482
     {0x6466, "MsgDropFlag"},
     {0x656e, "MsgEnter"},
     {0x6674, "MsgFlagType"},
     {0x6675, "MsgFlagUpdate"},
+    {0x6766, "MsgGrabFlag"},
     {0x676d, "MsgGMUpdate"},
     {0x6773, "MsgGameSettings"},
     {0x6774, "MsgGameTime"},
@@ -673,6 +761,8 @@ proto_register_bzflag (void)
     {0x6e66, "MsgNegotiateFlags"},
     {0x6f66, "MsgUDPLinkRequest"},
     {0x6f67, "MsgUDPLinkEstablished"},
+    {0x7062, "MsgPlayerInfo"},
+    {0x7069, "MsgLagPing"},
     {0x7073, "MsgPlayerUpdateSmall"},
     {0x7362, "MsgShotBegin"},
     {0x7363, "MsgScore"},
@@ -990,6 +1080,18 @@ proto_register_bzflag (void)
     {&hf_lifeTime,
       {"Life Time", "bzflag.lifeTime", FT_FLOAT, BASE_NONE, NULL, 0x0, NULL,
 	HFILL}},
+    {&hf_pingSeqNo,
+      {"Ping Sequence Number", "bzflag.pingSeqNo", FT_UINT16, BASE_DEC, NULL,
+	0x0, NULL, HFILL}},
+    {&hf_isRegistered,
+      {"Player Registered", "bzflag.player.registered", FT_BOOLEAN, 8, NULL,
+	0x01, NULL, HFILL}},
+    {&hf_isVerified,
+      {"Player Verified", "bzflag.player.verified", FT_BOOLEAN, 8, NULL, 0x02,
+	NULL, HFILL}},
+    {&hf_isAdmin,
+      {"Player Admin", "bzflag.player.admin", FT_BOOLEAN, 8, NULL, 0x04,
+	NULL, HFILL}},
   };
 
   static gint *ett[] = {
