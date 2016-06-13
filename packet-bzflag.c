@@ -145,6 +145,9 @@ static int hf_pingSeqNo      = -1;
 static int hf_isRegistered   = -1;
 static int hf_isVerified     = -1;
 static int hf_isAdmin        = -1;
+static int hf_from_tp        = -1;
+static int hf_to_tp          = -1;
+static int hf_undecoded      = -1;
 
 static gint ett_bzflag = -1;
 
@@ -235,7 +238,15 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
       ENC_BIG_ENDIAN);
   offset += 2;
 
-  if (code == 0x6163) {
+  if (code == 0x4e66) {
+    guint slen;
+
+    col_set_str(pinfo->cinfo, COL_INFO, "NearFlag");
+    offset = decodePosition(tvb, offset, tree);
+    slen = tvb_get_ntohl(tvb, offset);
+    proto_tree_add_item(tree, hf_flag_name, tvb, offset, 4, ENC_BIG_ENDIAN);
+    offset += 4 + slen;
+  } else if (code == 0x6163) {
     col_set_str(pinfo->cinfo, COL_INFO, "Accept");
     proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
@@ -469,6 +480,10 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
     offset += 2;
     proto_tree_add_item(tree, hf_vaz_short, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
+  } else if (code == 0x7270) {
+    col_set_str(pinfo->cinfo, COL_INFO, "RemovePlayer");
+    proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset++;
   } else if (code == 0x7362) {
     col_set_str(pinfo->cinfo, COL_INFO, "ShotBegin");
     proto_tree_add_item(tree, hf_timeStamp, tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -524,6 +539,23 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
       offset    += 1 + stringLength;
       remaining -= 1 + stringLength;
     }
+  } else if (code == 0x7466) {
+    col_set_str(pinfo->cinfo, COL_INFO, "TransferFlag");
+    proto_tree_add_item(tree, hf_src_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset++;
+    proto_tree_add_item(tree, hf_dst_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset++;
+    if (plen > 2) {
+      offset = decodeFlagInfo(tvb, offset, tree);
+    }
+  } else if (code == 0x7470) {
+    col_set_str(pinfo->cinfo, COL_INFO, "Teleport");
+    proto_tree_add_item(tree, hf_player, tvb, offset, 1, ENC_BIG_ENDIAN);
+    offset++;
+    proto_tree_add_item(tree, hf_from_tp, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+    proto_tree_add_item(tree, hf_to_tp, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
   } else if (code == 0x7475) {
     guint8 teamNo;
     guint8 i;
@@ -551,6 +583,8 @@ decodePackedMessages (tvbuff_t *tvb, packet_info *pinfo, gint offset,
   } else if (code == 0x7773) {
     col_set_str(pinfo->cinfo, COL_INFO, "WantSettings");
   } else {
+    col_set_str(pinfo->cinfo, COL_INFO, "Not Decoded");
+    proto_tree_add_item(tree, hf_undecoded, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset += plen;
   }
 }
@@ -764,10 +798,13 @@ proto_register_bzflag (void)
     {0x7062, "MsgPlayerInfo"},
     {0x7069, "MsgLagPing"},
     {0x7073, "MsgPlayerUpdateSmall"},
+    {0x7270, "MsgRemovePlayer"},
     {0x7362, "MsgShotBegin"},
     {0x7363, "MsgScore"},
     {0x7365, "MsgShotEnd"},
     {0x7376, "MsgSetVar"},
+    {0x7466, "MsgTransferFlag"},
+    {0x7470, "MsgTeleport"},
     {0x7475, "MsgTeamUpdate"},
     {0x7768, "MsgWantWHash"},
     {0x7773, "MsgWantSettings"},
@@ -1091,6 +1128,15 @@ proto_register_bzflag (void)
 	NULL, HFILL}},
     {&hf_isAdmin,
       {"Player Admin", "bzflag.player.admin", FT_BOOLEAN, 8, NULL, 0x04,
+	NULL, HFILL}},
+    {&hf_from_tp,
+      {"From Teleporter", "bzflag.teleport.from", FT_UINT16, BASE_DEC, NULL,
+	0x0, NULL, HFILL}},
+    {&hf_to_tp,
+      {"To Teleporter", "bzflag.teleport.to", FT_UINT16, BASE_DEC, NULL, 0x0,
+	NULL, HFILL}},
+    {&hf_undecoded,
+      {"Undecoded", "bzflag.undecoded", FT_BOOLEAN, BASE_NONE, NULL, 0x0,
 	NULL, HFILL}},
   };
 
