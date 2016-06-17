@@ -625,7 +625,7 @@ get_bzflag_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset,
 }
 
 static int
-dissect_tcp_bzflag (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
+dissect_BZFlag_tcp (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     void *data _U_)
 {
   proto_tree      *bzflag_tree;
@@ -674,7 +674,7 @@ dissect_tcp_bzflag (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 }
 
 static int
-dissect_udp_bzflag (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
+dissect_BZFlag_udp (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     void *data _U_)
 {
   gint len;
@@ -1151,16 +1151,74 @@ proto_register_bzflag (void)
   proto_register_subtree_array(ett, array_length(ett));
 }
 
+/* Heuristics test */
+static gboolean
+test_BZFlag (packet_info *pinfo _U_, tvbuff_t *tvb, int offset _U_,
+    void *data _U_)
+{
+  char str[10];
+  const char BZFlag_String[] ="BZFLAG";
+
+  if (tvb_captured_length(tvb) != 10)
+    return FALSE;
+
+  tvb_memcpy(tvb, str, offset, 10);
+  if (memcmp(str, BZFlag_String, 6))
+    return FALSE;
+  if (str[6] != 0x0d)
+    return FALSE;
+  if (str[7] != 0x0a)
+    return FALSE;
+  if (str[8] != 0x0d)
+    return FALSE;
+  if (str[9] != 0x0a)
+    return FALSE;
+
+  /* Assume it's your packet ... */
+  return TRUE;
+}
+
+dissector_handle_t BZFlag_tcp_handle;
+dissector_handle_t BZFlag_udp_handle;
+
+static gboolean
+dissect_BZFlag_heur_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
+    void *data)
+{
+  conversation_t *conversation;
+
+  if (!test_BZFlag(pinfo, tvb, 0, data))
+    return FALSE;
+
+  /*   and do the dissection */
+  dissect_BZFlag_tcp(tvb, pinfo, tree, data);
+
+  conversation = find_or_create_conversation(pinfo);
+  conversation_set_dissector(conversation, BZFlag_tcp_handle);
+
+  conversation = find_conversation(pinfo->fd->num, &pinfo->src, &pinfo->dst,
+      PT_UDP, pinfo->srcport, pinfo->destport,  0);
+  if (conversation == NULL) {
+    conversation = conversation_new(pinfo->fd->num,
+	&pinfo->src, &pinfo->dst, PT_UDP,
+	pinfo->srcport, pinfo->destport, 0);
+  }
+  conversation_set_dissector(conversation, BZFlag_udp_handle);
+
+  return TRUE;
+}
+
 void
 proto_reg_handoff_bzflag (void)
 {
-  dissector_handle_t bzflag_udp_handle;
-  dissector_handle_t bzflag_tcp_handle;
+  BZFlag_tcp_handle = new_create_dissector_handle(dissect_BZFlag_tcp,
+      proto_bzflag);
+  BZFlag_udp_handle = new_create_dissector_handle(dissect_BZFlag_udp,
+      proto_bzflag);
+  dissector_add_uint("tcp.port", 5154, BZFlag_tcp_handle);
+  dissector_add_uint("udp.port", 5154, BZFlag_udp_handle);
 
-  bzflag_tcp_handle = new_create_dissector_handle(dissect_tcp_bzflag,
-      proto_bzflag);
-  bzflag_udp_handle = new_create_dissector_handle(dissect_udp_bzflag,
-      proto_bzflag);
-  dissector_add_uint("tcp.port", 4202, bzflag_tcp_handle);
-  dissector_add_uint("udp.port", 4202, bzflag_udp_handle);
+  /* register as heuristic dissector for TCP */
+  heur_dissector_add("tcp", dissect_BZFlag_heur_tcp, "BZFlag over TCP",
+      "BZFlag_tcp", proto_bzflag, HEURISTIC_ENABLE);
 }
