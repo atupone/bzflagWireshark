@@ -28,6 +28,6 @@ the bzflag.so library will be generated. Move that to where wireshark is looking
 You normally need superuser privilege to do that.
 Here I do :
 
-# cp plugin/bzflag/.libs/bzflag.so /usr/lib/wireshark/plugins/2.0.4
+cp plugin/bzflag/.libs/bzflag.so /usr/lib/wireshark/plugins/2.0.4
 
 Now, when you start wireshark it will automatically detect if there is a bzflag protocol, and decode it accordingly
