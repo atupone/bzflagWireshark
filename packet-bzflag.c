@@ -633,9 +633,6 @@ dissect_BZFlag_tcp (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
   gint            len;
   gint            offset = 0;
 
-  if (tree == NULL)
-    return -1;
-
   len = tvb_reported_length(tvb);
   if (len == 10) {
     char str[6];
@@ -1211,9 +1208,9 @@ dissect_BZFlag_heur_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 void
 proto_reg_handoff_bzflag (void)
 {
-  BZFlag_tcp_handle = new_create_dissector_handle(dissect_BZFlag_tcp,
+  BZFlag_tcp_handle = create_dissector_handle(dissect_BZFlag_tcp,
       proto_bzflag);
-  BZFlag_udp_handle = new_create_dissector_handle(dissect_BZFlag_udp,
+  BZFlag_udp_handle = create_dissector_handle(dissect_BZFlag_udp,
       proto_bzflag);
   dissector_add_uint("tcp.port", 5154, BZFlag_tcp_handle);
   dissector_add_uint("udp.port", 5154, BZFlag_udp_handle);
